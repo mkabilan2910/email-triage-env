@@ -1,0 +1,105 @@
+# openenv.yaml — Describes our environment to the OpenEnv framework
+
+name: email-triage-env
+version: "1.0.0"
+description: >
+  A real-world email triage and response environment where an AI agent
+  must classify emails, extract key information, and draft professional
+  replies. Simulates tasks performed daily by customer support teams.
+
+author: "your-name-here"
+
+environment:
+  type: text
+  language: python
+  entry_point: server.py
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  endpoints:
+    reset: "/reset"
+    step: "/step"
+    state: "/state"
+
+tasks:
+  - id: task_1_easy
+    name: "Email Classification"
+    difficulty: easy
+    description: >
+      Given a customer email, classify it into the correct category
+      (billing, technical, general, complaint) and priority (low, medium, high).
+    reward_range: [0.0, 1.0]
+    action_space:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [billing, technical, general, complaint]
+        priority:
+          type: string
+          enum: [low, medium, high]
+
+  - id: task_2_medium
+    name: "Email Info Extraction"
+    difficulty: medium
+    description: >
+      Given a customer email, extract the customer name, issue type,
+      and urgency level (low, medium, high).
+    reward_range: [0.0, 1.0]
+    action_space:
+      type: object
+      properties:
+        name:
+          type: string
+        issue:
+          type: string
+        urgency:
+          type: string
+          enum: [low, medium, high]
+
+  - id: task_3_hard
+    name: "Email Response Drafting"
+    difficulty: hard
+    description: >
+      Given a customer email, draft a professional reply that includes
+      an apology, addresses the issue directly, and provides next steps.
+    reward_range: [0.0, 1.0]
+    action_space:
+      type: object
+      properties:
+        reply:
+          type: string
+
+observation_space:
+  type: object
+  properties:
+    task:
+      type: string
+    difficulty:
+      type: string
+    email:
+      type: object
+      properties:
+        subject:
+          type: string
+        body:
+          type: string
+    instruction:
+      type: string
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  description: >
+    Partial credit is awarded at every step. Task 1 gives 0.7 for correct
+    category and 0.3 for correct priority. Task 2 gives 0.33 per correctly
+    extracted field. Task 3 gives equal points per required element found
+    in the reply.
+
+tags:
+  - email
+  - triage
+  - customer-support
+  - nlp
+  - real-world
