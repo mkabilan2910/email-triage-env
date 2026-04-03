@@ -1,0 +1,15 @@
+# .dockerignore — tells Docker what NOT to copy into the container
+
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.git
+.gitignore
+*.md
+.pytest_cache
+*.egg-info
+dist
+build
