@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Optional
 import uvicorn
 
 from environment import EmailTriageEnvironment
@@ -42,10 +42,7 @@ def root():
 
 @app.post("/reset")
 def reset(request: ResetRequest):
-    """
-    Start a fresh episode.
-    Returns the first observation (email + instruction).
-    """
+    """Start a fresh episode. Returns first observation."""
     valid_tasks = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
     if request.task_name not in valid_tasks:
@@ -63,10 +60,7 @@ def reset(request: ResetRequest):
 
 @app.post("/step")
 def step(request: StepRequest):
-    """
-    Agent submits an action.
-    Returns observation, reward, done, info.
-    """
+    """Agent submits an action. Returns observation, reward, done, info."""
     if env.current_email is None:
         raise HTTPException(
             status_code=400,
@@ -79,17 +73,13 @@ def step(request: StepRequest):
 
 @app.get("/state")
 def state():
-    """
-    Returns current state of the environment.
-    """
+    """Returns current state of the environment."""
     return env.state()
 
 
 @app.get("/tasks")
 def list_tasks():
-    """
-    Lists all available tasks with descriptions.
-    """
+    """Lists all available tasks with descriptions."""
     from tasks import TASKS
     return {
         task_name: {
@@ -107,6 +97,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "server:app",
         host="0.0.0.0",
-        port=8000,
+        port=7860,
         reload=True
     )
