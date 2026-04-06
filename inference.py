@@ -6,19 +6,19 @@ import json
 import requests
 from openai import OpenAI
 
-# ── Configuration ────────────────────────────────────────────
+# Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL_NAME   = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
-SERVER_URL   = os.getenv("SERVER_URL", "http://localhost:8000")
+API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+MODEL_NAME   = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-3B-Instruct")
+SERVER_URL   = os.getenv("SERVER_URL", "http://localhost:7860")
 
-# ── OpenAI Client ────────────────────────────────────────────
+# OpenAI Client
 client = OpenAI(
     base_url=API_BASE_URL,
     api_key=API_KEY if API_KEY else "dummy-key-for-local-testing"
 )
 
-# ── Prompts for each task ────────────────────────────────────
+# Prompts for each task
 TASK_PROMPTS = {
     "task_1_easy": """You are an email classification agent.
 Read the email below and classify it.
@@ -63,9 +63,7 @@ Respond with JSON only. No explanation."""
 }
 
 
-# ── Helper functions ─────────────────────────────────────────
 def call_reset(task_name: str) -> dict:
-    """Call /reset endpoint to start a fresh episode"""
     response = requests.post(
         f"{SERVER_URL}/reset",
         json={"task_name": task_name}
@@ -74,7 +72,6 @@ def call_reset(task_name: str) -> dict:
 
 
 def call_step(action: dict) -> dict:
-    """Call /step endpoint to submit an action"""
     response = requests.post(
         f"{SERVER_URL}/step",
         json={"action": action}
@@ -82,14 +79,7 @@ def call_step(action: dict) -> dict:
     return response.json()
 
 
-def call_state() -> dict:
-    """Call /state endpoint to get current state"""
-    response = requests.get(f"{SERVER_URL}/state")
-    return response.json()
-
-
 def ask_llm(task_name: str, subject: str, body: str) -> dict:
-    """Send email to LLM and get structured response"""
     prompt = TASK_PROMPTS[task_name].format(
         subject=subject,
         body=body
@@ -114,7 +104,6 @@ def ask_llm(task_name: str, subject: str, body: str) -> dict:
 
         response_text = completion.choices[0].message.content.strip()
 
-        # Clean up response — remove markdown code blocks if present
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
@@ -125,7 +114,6 @@ def ask_llm(task_name: str, subject: str, body: str) -> dict:
     except Exception as e:
         print(f"  LLM call failed: {e}")
         print("  Using fallback answer...")
-        # Fallback answers if LLM fails
         fallbacks = {
             "task_1_easy":   {"category": "general", "priority": "low"},
             "task_2_medium": {"name": "unknown", "issue": "unknown", "urgency": "low"},
@@ -135,10 +123,6 @@ def ask_llm(task_name: str, subject: str, body: str) -> dict:
 
 
 def run_task(task_name: str, num_episodes: int = 3) -> float:
-    """
-    Run multiple episodes of a task and return average reward.
-    num_episodes=3 means we test all 3 emails in the task.
-    """
     print(f"\n{'='*50}")
     print(f"Running {task_name}")
     print(f"{'='*50}")
@@ -148,7 +132,6 @@ def run_task(task_name: str, num_episodes: int = 3) -> float:
     for episode in range(num_episodes):
         print(f"\n  Episode {episode + 1}/{num_episodes}")
 
-        # Reset environment
         reset_response = call_reset(task_name)
         observation = reset_response["observation"]
 
@@ -157,11 +140,9 @@ def run_task(task_name: str, num_episodes: int = 3) -> float:
 
         print(f"  Email: {subject}")
 
-        # Ask LLM for answer
         action = ask_llm(task_name, subject, body)
         print(f"  Action: {action}")
 
-        # Submit answer
         result = call_step(action)
         reward = result.get("reward", 0.0)
         total_reward += reward
@@ -173,7 +154,6 @@ def run_task(task_name: str, num_episodes: int = 3) -> float:
     return avg_reward
 
 
-# ── Main ─────────────────────────────────────────────────────
 def main():
     print("START")
     print(f"Server  : {SERVER_URL}")
@@ -200,25 +180,6 @@ def main():
     overall = round(sum(scores.values()) / len(scores), 3)
     print(f"STEP: {{\"overall_reward\": {overall}}}")
     print("END")
-
-    # Run all 3 tasks
-    scores = {}
-    scores["task_1_easy"]   = run_task("task_1_easy",   num_episodes=3)
-    scores["task_2_medium"] = run_task("task_2_medium", num_episodes=3)
-    scores["task_3_hard"]   = run_task("task_3_hard",   num_episodes=3)
-
-    # Print final summary
-    print(f"\n{'='*50}")
-    print("BASELINE SCORES SUMMARY")
-    print(f"{'='*50}")
-    for task, score in scores.items():
-        bar = "█" * int(score * 20)
-        print(f"  {task:20s} : {score:.3f}  {bar}")
-
-    overall = round(sum(scores.values()) / len(scores), 3)
-    print(f"\n  Overall average score : {overall}")
-    print(f"{'='*50}")
-    print("\nBaseline run complete!")
 
 
 if __name__ == "__main__":
