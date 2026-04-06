@@ -175,20 +175,31 @@ def run_task(task_name: str, num_episodes: int = 3) -> float:
 
 # ── Main ─────────────────────────────────────────────────────
 def main():
-    print("=" * 50)
-    print("Email Triage Environment — Baseline Agent")
-    print("=" * 50)
+    print("START")
     print(f"Server  : {SERVER_URL}")
     print(f"Model   : {MODEL_NAME}")
 
-    # Check server is running
     try:
         response = requests.get(f"{SERVER_URL}/")
         print(f"Server status: {response.json()['status']}")
     except Exception:
         print("ERROR: Server is not running!")
-        print(f"Please start it with: uvicorn server:app --host 0.0.0.0 --port 8000")
+        print("END")
         return
+
+    scores = {}
+    scores["task_1_easy"]   = run_task("task_1_easy",   num_episodes=3)
+    scores["task_2_medium"] = run_task("task_2_medium", num_episodes=3)
+    scores["task_3_hard"]   = run_task("task_3_hard",   num_episodes=3)
+
+    print("\nBASELINE SCORES SUMMARY")
+    print("=" * 50)
+    for task, score in scores.items():
+        print(f"STEP: {{\"task\": \"{task}\", \"reward\": {score}}}")
+
+    overall = round(sum(scores.values()) / len(scores), 3)
+    print(f"STEP: {{\"overall_reward\": {overall}}}")
+    print("END")
 
     # Run all 3 tasks
     scores = {}
