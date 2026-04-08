@@ -1,11 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import uvicorn
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from environment import EmailTriageEnvironment
 from tasks import TASKS
@@ -17,9 +17,6 @@ app = FastAPI(
 )
 
 env = EmailTriageEnvironment()
-
-class ResetRequest(BaseModel):
-    task_name: Optional[str] = "task_1_easy"
 
 class StepRequest(BaseModel):
     action: dict
@@ -34,23 +31,29 @@ def root():
     }
 
 @app.post("/reset")
-def reset(request: ResetRequest):
+async def reset(request: Request):
+    try:
+        body = await request.json()
+        task_name = body.get("task_name", "task_1_easy")
+    except:
+        task_name = "task_1_easy"
+
     valid_tasks = ["task_1_easy", "task_2_medium", "task_3_hard"]
-    if request.task_name not in valid_tasks:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid task. Choose from: {valid_tasks}"
-        )
-    observation = env.reset(request.task_name)
-    return {"observation": observation, "status": "episode started"}
+    if task_name not in valid_tasks:
+        task_name = "task_1_easy"
+
+    observation = env.reset(task_name)
+    return {
+        "observation": observation,
+        "reward": 0.0,
+        "done": False,
+        "info": {"task": task_name, "status": "episode started"}
+    }
 
 @app.post("/step")
 def step(request: StepRequest):
     if env.current_email is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Environment not started. Call /reset first."
-        )
+        raise HTTPException(status_code=400, detail="Call /reset first.")
     return env.step(request.action)
 
 @app.get("/state")
@@ -70,12 +73,7 @@ def list_tasks():
     }
 
 def main():
-    uvicorn.run(
-        "server.app:app",
-        host="0.0.0.0",
-        port=7860,
-        reload=False
-    )
+    uvicorn.run("app:app", host="0.0.0.0", port=7860, reload=False)
 
 if __name__ == "__main__":
     main()

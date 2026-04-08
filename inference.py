@@ -1,119 +1,95 @@
-# inference.py — Baseline agent that runs against our environment
-# Uses OpenAI client as required by the hackathon rules
-
 import os
 import json
 import requests
 from openai import OpenAI
+from typing import List, Optional
 
-# Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/groq/openai/v1")
 API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME   = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-3B-Instruct")
+MODEL_NAME   = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 SERVER_URL   = os.getenv("SERVER_URL", "http://localhost:7860")
+BENCHMARK    = "email-triage-env"
 
-# OpenAI Client
 client = OpenAI(
     base_url=API_BASE_URL,
-    api_key=API_KEY if API_KEY else "dummy-key-for-local-testing"
+    api_key=API_KEY if API_KEY else "dummy-key"
 )
 
-# Prompts for each task
 TASK_PROMPTS = {
     "task_1_easy": """You are an email classification agent.
 Read the email below and classify it.
 Respond with ONLY a JSON object like this:
 {{"category": "billing", "priority": "high"}}
-
 Category must be exactly one of: billing, technical, general, complaint
 Priority must be exactly one of: low, medium, high
-
 Email Subject: {subject}
 Email Body: {body}
-
 Respond with JSON only. No explanation.""",
 
     "task_2_medium": """You are an email information extraction agent.
 Read the email below and extract key information.
 Respond with ONLY a JSON object like this:
 {{"name": "John Smith", "issue": "payment failure", "urgency": "high"}}
-
 Urgency must be exactly one of: low, medium, high
-
 Email Subject: {subject}
 Email Body: {body}
-
 Respond with JSON only. No explanation.""",
 
     "task_3_hard": """You are a professional customer support agent.
 Read the email below and write a professional reply.
 Respond with ONLY a JSON object like this:
-{{"reply": "Dear Customer, we apologize for the inconvenience..."}}
-
-Your reply must:
-- Start with an apology
-- Address the specific issue
-- Provide clear next steps
-- Be professional and empathetic
-
+{{"reply": "Dear Customer, we apologize..."}}
+Your reply must start with an apology, address the issue, and provide next steps.
 Email Subject: {subject}
 Email Body: {body}
-
 Respond with JSON only. No explanation."""
 }
 
 
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+
+
 def call_reset(task_name: str) -> dict:
-    response = requests.post(
-        f"{SERVER_URL}/reset",
-        json={"task_name": task_name}
-    )
+    response = requests.post(f"{SERVER_URL}/reset", json={"task_name": task_name})
     return response.json()
 
 
 def call_step(action: dict) -> dict:
-    response = requests.post(
-        f"{SERVER_URL}/step",
-        json={"action": action}
-    )
+    response = requests.post(f"{SERVER_URL}/step", json={"action": action})
     return response.json()
 
 
 def ask_llm(task_name: str, subject: str, body: str) -> dict:
-    prompt = TASK_PROMPTS[task_name].format(
-        subject=subject,
-        body=body
-    )
-
+    prompt = TASK_PROMPTS[task_name].format(subject=subject, body=body)
     try:
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant that responds only in JSON format."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
+                {"role": "system", "content": "You are a helpful assistant that responds only in JSON format."},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.0,
             max_tokens=300
         )
-
         response_text = completion.choices[0].message.content.strip()
-
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-
         return json.loads(response_text)
-
     except Exception as e:
-        print(f"  LLM call failed: {e}")
-        print("  Using fallback answer...")
         fallbacks = {
             "task_1_easy":   {"category": "general", "priority": "low"},
             "task_2_medium": {"name": "unknown", "issue": "unknown", "urgency": "low"},
@@ -122,64 +98,52 @@ def ask_llm(task_name: str, subject: str, body: str) -> dict:
         return fallbacks[task_name]
 
 
-def run_task(task_name: str, num_episodes: int = 3) -> float:
-    print(f"\n{'='*50}")
-    print(f"Running {task_name}")
-    print(f"{'='*50}")
+def run_task(task_name: str) -> None:
+    rewards = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-    total_reward = 0.0
+    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
-    for episode in range(num_episodes):
-        print(f"\n  Episode {episode + 1}/{num_episodes}")
+    try:
+        for step in range(1, 4):
+            reset_response = call_reset(task_name)
+            observation = reset_response["observation"]
+            subject = observation["email"]["subject"]
+            body = observation["email"]["body"]
 
-        reset_response = call_reset(task_name)
-        observation = reset_response["observation"]
+            action = ask_llm(task_name, subject, body)
+            action_str = json.dumps(action).replace(" ", "")
 
-        subject = observation["email"]["subject"]
-        body    = observation["email"]["body"]
+            result = call_step(action)
+            reward = result.get("reward", 0.0)
+            done = result.get("done", True)
 
-        print(f"  Email: {subject}")
+            rewards.append(reward)
+            steps_taken = step
 
-        action = ask_llm(task_name, subject, body)
-        print(f"  Action: {action}")
+            log_step(step=step, action=action_str, reward=reward, done=done, error=None)
 
-        result = call_step(action)
-        reward = result.get("reward", 0.0)
-        total_reward += reward
+        score = sum(rewards) / len(rewards) if rewards else 0.0
+        score = min(max(score, 0.0), 1.0)
+        success = score >= 0.1
 
-        print(f"  Reward: {reward}")
-
-    avg_reward = round(total_reward / num_episodes, 3)
-    print(f"\n  Average reward for {task_name}: {avg_reward}")
-    return avg_reward
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 def main():
-    print("START")
-    print(f"Server  : {SERVER_URL}")
-    print(f"Model   : {MODEL_NAME}")
-
     try:
         response = requests.get(f"{SERVER_URL}/")
-        print(f"Server status: {response.json()['status']}")
+        response.json()
     except Exception:
-        print("ERROR: Server is not running!")
-        print("END")
+        print(f"ERROR: Server not running at {SERVER_URL}")
         return
 
-    scores = {}
-    scores["task_1_easy"]   = run_task("task_1_easy",   num_episodes=3)
-    scores["task_2_medium"] = run_task("task_2_medium", num_episodes=3)
-    scores["task_3_hard"]   = run_task("task_3_hard",   num_episodes=3)
-
-    print("\nBASELINE SCORES SUMMARY")
-    print("=" * 50)
-    for task, score in scores.items():
-        print(f"STEP: {{\"task\": \"{task}\", \"reward\": {score}}}")
-
-    overall = round(sum(scores.values()) / len(scores), 3)
-    print(f"STEP: {{\"overall_reward\": {overall}}}")
-    print("END")
+    run_task("task_1_easy")
+    run_task("task_2_medium")
+    run_task("task_3_hard")
 
 
 if __name__ == "__main__":
