@@ -54,7 +54,7 @@ class EmailTriageEnvironment:
             reward = grade_task_2(action, self.current_email)
 
         elif self.task_name == "task_3_hard":
-            reward = grade_task_3(action, self.current_email["required_elements"])
+            reward = grade_task_3(action, self.current_email)
 
         else:
             reward = 0.0
